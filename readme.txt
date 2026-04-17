@@ -2,7 +2,7 @@
 Author: Oliver Jones
 Contributors: OllieJones
 Tags: shows, schedule, calendar, post
-Requires at least: 5.5
+Requires at least: 5.8
 Requires PHP: 5.6
 Tested up to: 7.0
 Version: 0.5.0
