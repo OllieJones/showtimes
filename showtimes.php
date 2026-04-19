@@ -104,8 +104,28 @@ namespace showtimes {
                     if ( ! $term ) {
                         return;
                     }
-                    if ( isset( $_POST[ $this->NAME ] ) ) {
-                        update_post_meta( $post_id, $this->KEY, sanitize_text_field( $_POST[ $this->NAME ] ) );
+                    $time = false;
+                    if ( is_array( $_POST['meta'] ) ) {
+                        foreach ( $_POST['meta'] as $meta_id => $item ) {
+                            if ( is_array( $item )
+                                 && array_key_exists( 'key', $item )
+                                 && array_key_exists( 'value', $item )
+                                 && $item['key'] === $this->KEY ) {
+                                $time = sanitize_text_field( $item['value'] );
+                                break;
+                            }
+                        }
+                    }
+                    if ( false !== $time ) {
+                        try {
+                            $showtime = new DateTimeImmutable( $time, wp_timezone() );
+                            /* Trim the timezone from the ISO date. */
+                            $showtime = substr( $showtime->format( 'c' ), 0, 19 );
+                        } catch ( Exception $ex ) {
+                            $showtime = '';
+                        }
+                        update_post_meta( $post_id, $this->KEY, $showtime );
+
                     }
                 }, 10, 3 );
             }
@@ -193,7 +213,8 @@ namespace showtimes {
 
         }
     }
-    add_action ( 'init', function () {
-       new Showtime();
-    });
+
+    add_action( 'init', function () {
+        new Showtime();
+    } );
 }
