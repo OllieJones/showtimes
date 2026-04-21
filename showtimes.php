@@ -19,6 +19,7 @@ namespace showtimes {
 
     use DateTimeImmutable;
     use Exception;
+    use WP_Query;
     use WP_Term;
 
     class Showtime {
@@ -28,6 +29,45 @@ namespace showtimes {
         private $SLUG = 'show';
 
         public function __construct() {
+
+            add_action ( 'parse_request',function ($wp) {
+                $foo=$wp;
+            });
+
+            add_shortcode( $this->NAME, function ( $atts, $content, $shortcode_tag ) {
+                $now  = new DateTimeImmutable( 'now', wp_timezone() );
+                $now  = $now->format( 'Y-m-d' );
+                $args = array(
+                        'category_name' => $this->SLUG,
+                        'meta_key'      => $this->KEY,
+                        'meta_type'     => 'DATETIME',
+                        'orderby'       => 'meta_value',
+                        'order'         => 'ASC',
+                        'meta_query'    => array(
+                                'key'     => $this->KEY,
+                                'value'   => $now,
+                                'type'    => 'DATETIME',
+                                'compare' => '>='
+                        ),
+
+                );
+
+                $q   = new WP_Query( $args );
+                $out = array();
+                while ( $q->have_posts() ) {
+                    $q->the_post();
+                    $out[] = '<p><a class="read-more" href="';
+                    $out[] = get_permalink();
+                    $out[] = '">';
+                    $out[] = get_the_title();
+                    $out[] = '</a></p>';
+                }
+
+                wp_reset_postdata();
+
+                return implode( '', $out );
+
+            } );
 
             add_filter( 'the_title', function ( $title, $post_id ) {
                 if ( ! $post_id ) {
@@ -120,7 +160,7 @@ namespace showtimes {
                         try {
                             $showtime = new DateTimeImmutable( $time, wp_timezone() );
                             /* Trim the timezone from the ISO date. */
-                            $showtime = substr( $showtime->format( 'c' ), 0, 19 );
+                            $showtime = $showtime->format( 'Y-m-d H:i:00' );
                         } catch ( Exception $ex ) {
                             $showtime = '';
                         }
