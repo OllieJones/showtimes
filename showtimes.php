@@ -19,6 +19,7 @@ namespace showtimes {
 
     use DateTimeImmutable;
     use Exception;
+    use GuzzleHttp\Exception\ClientException;
     use WP_Query;
     use WP_Term;
 
@@ -30,37 +31,147 @@ namespace showtimes {
 
         public function __construct() {
 
-            add_action ( 'parse_request',function ($wp) {
-                $foo=$wp;
-            });
+            add_action /* HACK HACK */ ( 'update_postmeta', function ( $meta_id, $post_id, $meta_key, $meta_value ) {
+                if ( $meta_key === $this->KEY ) {
+                    $foo = $meta_value;
+                }
+            }, - 1, 4 );
 
-            add_shortcode( $this->NAME, function ( $atts, $content, $shortcode_tag ) {
-                $now  = new DateTimeImmutable( 'now', wp_timezone() );
-                $now  = $now->format( 'Y-m-d' );
+            add_filter( 'add_post_metadata', function ( $check, $post_id, $meta_key, $meta_value, $unique ) {
+                if ( $meta_key === $this->KEY ) {
+                    if ( 'post' === get_post_type( $post_id ) && $this->get_category( $post_id, $this->SLUG ) ) {
+                        try {
+                            $showtime = $this->get_isotime( $meta_value );
+
+                            return update_post_meta( $post_id, $meta_key, $showtime );
+                        } catch ( Exception $e ) {
+                            /* Empty, intentionally. Don't change time strings that can't be parsed. */
+                        }
+                    }
+                }
+
+                return $check;
+            }, 10, 5 );
+
+            /**
+             * [showtime when="future" /] or "past" or "today" or "tomorrow" or "all"
+             */
+            add_shortcode( $this->NAME, function ( $atts = array(), $content = null, $tag = '' ) {
+                $atts = array_change_key_case( (array) $atts, CASE_LOWER );
+                $atts = shortcode_atts(
+                        array(
+                                'when' => 'future',
+                                'none' => __( '(none)', 'showtimes' ),
+                        ), $atts, $tag );
+                $when = strtolower( $atts['when'] );
+                $today = $this->get_isoday();
+
+                $order = 'ASC';
+                switch ( $when ) {
+                    case 'future':
+                        $date_query = array(
+                                'key'     => $this->KEY,
+                                'value'   => $today,
+                                'type'    => 'DATETIME',
+                                'compare' => '>='
+                        );
+
+                        break;
+                    case 'past':
+                        $date_query = array(
+                                'key'     => $this->KEY,
+                                'value'   => $today,
+                                'type'    => 'DATETIME',
+                                'compare' => '<'
+                        );
+                        $order      = 'DESC';
+                        break;
+                    case 'today':
+                        $date_query = array(
+                                'relation' => 'AND',
+                                array(
+                                        'key'     => $this->KEY,
+                                        'value'   => $today,
+                                        'type'    => 'DATETIME',
+                                        'compare' => '>='
+                                ),
+                                array(
+                                        'key'     => $this->KEY,
+                                        'value'   => $this->get_isoday( 'now', '+ 1 day' ),
+                                        'type'    => 'DATETIME',
+                                        'compare' => '<'
+                                ),
+                        );
+                        break;
+                    case 'tomorrow':
+                        $date_query = array(
+                                'relation' => 'AND',
+                                array(
+                                        'key'     => $this->KEY,
+                                        'value'   => $this->get_isoday( 'now', '+ 1 day' ),
+                                        'type'    => 'DATETIME',
+                                        'compare' => '>='
+                                ),
+                                array(
+                                        'key'     => $this->KEY,
+                                        'value'   => $this->get_isoday( 'now', '+ 2 day' ),
+                                        'type'    => 'DATETIME',
+                                        'compare' => '<'
+                                ),
+                        );
+                        break;
+
+
+                    case 'all' :
+                    default:
+                        $date_query = null;
+                        break;
+                }
+
+
                 $args = array(
                         'category_name' => $this->SLUG,
                         'meta_key'      => $this->KEY,
                         'meta_type'     => 'DATETIME',
                         'orderby'       => 'meta_value',
-                        'order'         => 'ASC',
-                        'meta_query'    => array(
-                                'key'     => $this->KEY,
-                                'value'   => $now,
-                                'type'    => 'DATETIME',
-                                'compare' => '>='
-                        ),
-
+                        'order'         => $order,
                 );
+                if ( $date_query ) {
+                    $args['meta_query'] = $date_query;
+                }
 
-                $q   = new WP_Query( $args );
-                $out = array();
+                $q     = new WP_Query( $args );
+                $out   = array();
+                $found = false;
+                $today = $this->get_isoday();
                 while ( $q->have_posts() ) {
+                    $found = true;
                     $q->the_post();
-                    $out[] = '<p><a class="read-more" href="';
-                    $out[] = get_permalink();
-                    $out[] = '">';
-                    $out[] = get_the_title();
-                    $out[] = '</a></p>';
+                    $classes = array( 'showtime' );
+                    try {
+                        $showtime = get_post_meta( get_the_ID(), $this->KEY, true );
+                        if ( $showtime ) {
+                            $showtime = $this->get_isoday( $showtime );
+                            if ( $today == $showtime ) {
+                                $classes[] = 'today';
+                            }
+                        }
+                    } catch ( Exception $exception ) {
+                        $classes[] = 'showtime-error';
+                    }
+                    $out[]  = '<p class="';
+                    $out[]  = implode( ' ', array_map( 'esc_attr', $classes ) );
+                    $out [] = '"><a class="read-more" href="';
+                    $out[]  = get_permalink();
+                    $out[]  = '">';
+                    $out[]  = get_the_title();
+                    $out[]  = '</a></p>';
+                }
+
+                if ( ! $found ) {
+                    $out[] = '<p class="showtime notfound">';
+                    $out[] = esc_html( $atts['none'] );
+                    $out[] = '</p>';
                 }
 
                 wp_reset_postdata();
@@ -158,9 +269,7 @@ namespace showtimes {
                     }
                     if ( false !== $time ) {
                         try {
-                            $showtime = new DateTimeImmutable( $time, wp_timezone() );
-                            /* Trim the timezone from the ISO date. */
-                            $showtime = $showtime->format( 'Y-m-d H:i:00' );
+                            $showtime = $this->get_isotime( $time );
                         } catch ( Exception $ex ) {
                             $showtime = '';
                         }
@@ -251,6 +360,39 @@ namespace showtimes {
 
             return array( $showtime, $showtime_iso );
 
+        }
+
+        /**
+         *  Get the ISO time (2026-03-15 09:41:00) for a time string.
+         * @param string $time A time string, php-compatible
+         * @param string $modifier A time modifier, php compatible
+         * @param string $format Time format.
+         *
+         * @return string
+         */
+        private function get_isotime( $time = 'now', $modifier = null, $format = 'Y-m-d H:i:00' ) {
+            try {
+                $time = new DateTimeImmutable( $time, wp_timezone() );
+                if ( is_string( $modifier ) ) {
+                    $time = $time->modify( $modifier );
+                }
+            } catch ( Exception $ex ) {
+                $time = new DateTimeImmutable( 'now', wp_timezone() );
+            }
+
+            return $time->format( $format );
+        }
+
+        /**
+         *  Get the ISO day (2026-03-15) for a time string.
+         * @param string $time A time string, php-compatible
+         * @param string $modifier A time modifier, php compatible
+         * @param string $format Time format.
+         *
+         * @return string
+         */
+        private function get_isoday( $time = 'now', $modifier = null ) {
+            return $this->get_isotime( $time, $modifier, 'Y-m-d' );
         }
     }
 
