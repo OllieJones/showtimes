@@ -336,7 +336,7 @@ namespace showtimes {
                 $showtime_iso = date( 'Y-m-d', strtotime( 'tomorrow' ) ) . 'T18:00:00';
                 $showtime     = ( 'title' === $context )
                         ? ''
-                        : __( 'Set Showtime with Quick Edit', 'showtimes' );
+                        : __( 'Use Quick Edit to set the showtime', 'showtimes' );
             }
 
             return array( $showtime, $showtime_iso );
