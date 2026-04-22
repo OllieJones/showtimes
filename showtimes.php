@@ -19,7 +19,6 @@ namespace showtimes {
 
     use DateTimeImmutable;
     use Exception;
-    use GuzzleHttp\Exception\ClientException;
     use WP_Query;
     use WP_Term;
 
@@ -29,41 +28,21 @@ namespace showtimes {
         private $NAME = 'showtime';
         private $SLUG = 'show';
 
+        private $updates = array();
+
         public function __construct() {
-
-            add_action /* HACK HACK */ ( 'update_postmeta', function ( $meta_id, $post_id, $meta_key, $meta_value ) {
-                if ( $meta_key === $this->KEY ) {
-                    $foo = $meta_value;
-                }
-            }, - 1, 4 );
-
-            add_filter( 'add_post_metadata', function ( $check, $post_id, $meta_key, $meta_value, $unique ) {
-                if ( $meta_key === $this->KEY ) {
-                    if ( 'post' === get_post_type( $post_id ) && $this->get_category( $post_id, $this->SLUG ) ) {
-                        try {
-                            $showtime = $this->get_isotime( $meta_value );
-
-                            return update_post_meta( $post_id, $meta_key, $showtime );
-                        } catch ( Exception $e ) {
-                            /* Empty, intentionally. Don't change time strings that can't be parsed. */
-                        }
-                    }
-                }
-
-                return $check;
-            }, 10, 5 );
 
             /**
              * [showtime when="future" /] or "past" or "today" or "tomorrow" or "all"
              */
             add_shortcode( $this->NAME, function ( $atts = array(), $content = null, $tag = '' ) {
-                $atts = array_change_key_case( (array) $atts, CASE_LOWER );
-                $atts = shortcode_atts(
+                $atts  = array_change_key_case( (array) $atts, CASE_LOWER );
+                $atts  = shortcode_atts(
                         array(
                                 'when' => 'future',
                                 'none' => __( '(none)', 'showtimes' ),
                         ), $atts, $tag );
-                $when = strtolower( $atts['when'] );
+                $when  = strtolower( $atts['when'] );
                 $today = $this->get_isoday();
 
                 $order = 'ASC';
@@ -143,7 +122,6 @@ namespace showtimes {
                 $q     = new WP_Query( $args );
                 $out   = array();
                 $found = false;
-                $today = $this->get_isoday();
                 while ( $q->have_posts() ) {
                     $found = true;
                     $q->the_post();
@@ -200,8 +178,6 @@ namespace showtimes {
 
             if ( is_admin() ) {
 
-                $default = date( 'Y-m-d', strtotime( 'tomorrow' ) ) . 'T18:00:00';
-
                 register_post_meta( 'post', $this->KEY, array(
                         'object_type'  => 'post',
                         'show_in_rest' => true,
@@ -217,11 +193,12 @@ namespace showtimes {
                     return $columns;
                 } );
 
+                /* The admin posts page. */
 
                 add_action( 'manage_post_posts_custom_column', function ( $column, $post_id ) {
                     if ( 'post' === get_post_type( $post_id ) && $this->get_category( $post_id, $this->SLUG ) ) {
                         if ( $column === $this->NAME ) {
-                            list( $showtime, $isotime ) = $this->get_showtime( $post_id, $this->KEY );
+                            list( $showtime, $isotime ) = $this->get_showtime( $post_id, $this->KEY, 'table' );
                             $showtime = $showtime ?: '';
                             echo esc_html( $showtime ) . '<span class="iso" data-iso="' . esc_attr( $isotime ) . '"></span>';
                         }
@@ -267,15 +244,13 @@ namespace showtimes {
                             }
                         }
                     }
-                    if ( false !== $time ) {
-                        try {
-                            $showtime = $this->get_isotime( $time );
-                        } catch ( Exception $ex ) {
-                            $showtime = '';
-                        }
-                        update_post_meta( $post_id, $this->KEY, $showtime );
-
+                    if ( is_string( $time ) ) {
+                        $this->single_update( $post_id, $this->KEY, $time );
                     }
+                    if ( isset( $_POST[ $this->NAME ] ) ) {
+                        $this->single_update( $post_id, $this->KEY, sanitize_text_field( $_POST[ $this->NAME ] ) );
+                    }
+
                 }, 10, 3 );
             }
 
@@ -309,6 +284,7 @@ namespace showtimes {
                 <?php
 
             } );
+
         }
 
         /** Get the WP_Term for a category slug if it exists.
@@ -336,17 +312,19 @@ namespace showtimes {
          *
          * @return array|false[] (Date-formatted string, iso string)
          */
-        private function get_showtime( $post_id, $meta_key ) {
+        private function get_showtime( $post_id, $meta_key, $context = 'title' ) {
             $showtime     = false;
             $showtime_iso = get_post_meta( $post_id, $meta_key, true );
 
             if ( $showtime_iso ) {
                 /* We have a stored time. */
                 try {
-                    $showtime    = new DateTimeImmutable( $showtime_iso, wp_timezone() );
-                    $date_format = get_option( 'date_format' ) . ' ' . get_option( 'time_format' );
-                    $showtime    = wp_date( $date_format, (int) $showtime->getTimestamp() );
-                    $showtime    = str_replace( ':00', '', $showtime );
+                    $showtime = $this->get_isotime( $showtime_iso, null, get_option( 'date_format' ) . ' ' . get_option( 'time_format' ) );
+                    $showtime = str_replace( ':00', '', $showtime );
+                    $computed = $this->get_isotime( $showtime_iso );
+                    if ( $showtime_iso !== $computed ) {
+                        $this->single_update( $post_id, $meta_key, $computed );
+                    }
                 } catch ( Exception $e ) {
                     $showtime     = false;
                     $showtime_iso = false;
@@ -356,6 +334,9 @@ namespace showtimes {
             if ( ! $showtime_iso ) {
                 /* Default ISO time. */
                 $showtime_iso = date( 'Y-m-d', strtotime( 'tomorrow' ) ) . 'T18:00:00';
+                $showtime     = ( 'title' === $context )
+                        ? ''
+                        : __( 'Set Showtime with Quick Edit', 'showtimes' );
             }
 
             return array( $showtime, $showtime_iso );
@@ -364,13 +345,14 @@ namespace showtimes {
 
         /**
          *  Get the ISO time (2026-03-15 09:41:00) for a time string.
+         *
          * @param string $time A time string, php-compatible
          * @param string $modifier A time modifier, php compatible
          * @param string $format Time format.
          *
          * @return string
          */
-        private function get_isotime( $time = 'now', $modifier = null, $format = 'Y-m-d H:i:00' ) {
+        private function get_isotime( $time = 'now', $modifier = null, $format = 'Y-m-d\TH:i:00' ) {
             try {
                 $time = new DateTimeImmutable( $time, wp_timezone() );
                 if ( is_string( $modifier ) ) {
@@ -385,6 +367,7 @@ namespace showtimes {
 
         /**
          *  Get the ISO day (2026-03-15) for a time string.
+         *
          * @param string $time A time string, php-compatible
          * @param string $modifier A time modifier, php compatible
          * @param string $format Time format.
@@ -394,6 +377,15 @@ namespace showtimes {
         private function get_isoday( $time = 'now', $modifier = null ) {
             return $this->get_isotime( $time, $modifier, 'Y-m-d' );
         }
+
+        private function single_update( $post_id, $meta_key, $meta_value ) {
+            $prev = get_post_meta( $post_id, $meta_key, false );
+            if ( count( $prev ) > 1 ) {
+                delete_post_meta( $post_id, $meta_key );
+            }
+            update_post_meta( $post_id, $meta_key, $meta_value );
+        }
+
     }
 
     add_action( 'init', function () {

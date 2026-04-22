@@ -9,7 +9,7 @@ msgstr ""
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
-"POT-Creation-Date: 2026-04-19T21:32:31+00:00\n"
+"POT-Creation-Date: 2026-04-22T00:38:59+00:00\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "X-Generator: WP-CLI 2.9.0\n"
 "X-Domain: showtimes\n"
@@ -34,12 +34,20 @@ msgstr ""
 msgid "https://github.com/OllieJones/"
 msgstr ""
 
-#: showtimes.php:59
-#: showtimes.php:64
-#: showtimes.php:88
+#: showtimes.php:43
+msgid "(none)"
+msgstr ""
+
+#: showtimes.php:186
+#: showtimes.php:191
+#: showtimes.php:216
 msgid "Showtime"
 msgstr ""
 
-#: showtimes.php:60
+#: showtimes.php:187
 msgid "The time and date of the event."
+msgstr ""
+
+#: showtimes.php:339
+msgid "Set Showtime with Quick Edit"
 msgstr ""
