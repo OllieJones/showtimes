@@ -3,7 +3,7 @@
  * Plugin Name: Showtimes
  * Plugin URI: https://github.com/OllieJones/showtimes
  * Description: Display shows. Shows are posts with the category "show"
- * Version: 0.5.0
+ * Version: 0.5.1
  * Author: Oliver Jones
  * Author URI: https://github.com/OllieJones/
  * Requires at least: 5.8
@@ -362,7 +362,7 @@ namespace showtimes {
                 $time = new DateTimeImmutable( 'now', wp_timezone() );
             }
 
-            return $time->format( $format );
+            return $time->format( $this->clean_format( $format, $time ) );
         }
 
         /**
@@ -384,6 +384,19 @@ namespace showtimes {
                 delete_post_meta( $post_id, $meta_key );
             }
             update_post_meta( $post_id, $meta_key, $meta_value );
+        }
+
+        private function clean_format( $format, DateTimeImmutable $time ) {
+            $now = new DateTimeImmutable('now', wp_timezone());
+            if ('Y' !== substr($format, 0,1)) {
+                $yearnow  = $now->format( 'Y' );
+                $yeartime = $time->format( 'Y' );
+                if ( $yearnow === $yeartime) {
+                    $format = preg_replace('/[- ,]+Y[- ,]/', ' ', $format);
+                }
+            }
+            return $format;
+
         }
 
     }
