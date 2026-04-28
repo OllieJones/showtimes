@@ -158,6 +158,9 @@ namespace showtimes {
 
             } );
 
+            /**
+             * Add the showtime to the title when it's available.
+             */
             add_filter( 'the_title', function ( $title, $post_id ) {
                 if ( ! $post_id ) {
                     return $title;
@@ -187,6 +190,10 @@ namespace showtimes {
                         'label'        => __( 'Showtime', 'showtimes' ),
                         'description'  => __( 'The time and date of the event.', 'showtimes' ),
                 ) );
+
+                /**
+                 * Put a Showtime meta box on the editor.
+                 */
                 add_action( 'add_meta_boxes_post', function ( $post ) {
                     $priority = ( $this->get_category( $post->ID, $this->SLUG ) ) ? 'high' : 'default';
                     add_meta_box(
@@ -196,11 +203,11 @@ namespace showtimes {
                                 list( $display, $iso ) = $this->get_showtime( $post->ID, $this->KEY );
 
                                 ?>
-                                <input  type="datetime-local"
-                                        id="<?php echo esc_attr( $this->NAME ) ?>"
-                                        name="<?php echo esc_attr( $this->NAME ) ?>"
-                                        value="<?php echo esc_attr( $iso ) ?>"
-                                        title="<?php echo esc_attr__('The date and time of this post\'s event', 'showtimes') ?>"/>
+                                <input type="datetime-local"
+                                       id="<?php echo esc_attr( $this->NAME ) ?>"
+                                       name="<?php echo esc_attr( $this->NAME ) ?>"
+                                       value="<?php echo esc_attr( $iso ) ?>"
+                                       title="<?php echo esc_attr__( 'The date and time of this post\'s event', 'showtimes' ) ?>"/>
 
                                 <?php
                             },
@@ -211,14 +218,52 @@ namespace showtimes {
 
                 }, 10, 1 );
 
+                /**
+                 * Add the Showtime column to the posts list.
+                 */
                 add_filter( 'manage_post_posts_columns', function ( $columns ) {
                     $columns[ $this->NAME ] = __( 'Showtime', 'showtimes' );
 
                     return $columns;
                 } );
 
-                /* The admin posts page. */
+                /**
+                 * Make the Showtime column sortable.
+                 */
+                add_filter( 'manage_edit-post_sortable_columns', function ( $columns ) {
+                    $columns[ $this->NAME ] = $this->NAME;
 
+                    return $columns;
+                } );
+
+                /**
+                 * Handle sorting.
+                 */
+                add_action( 'pre_get_posts', function ( $query ) {
+                    $orderby = $query->get( 'orderby' );
+
+                    if ( $this->NAME == $orderby ) {
+
+                        $meta_query = array(
+                                'relation' => 'OR',
+                                array(
+                                        'key'     => $this->KEY,
+                                        'compare' => 'NOT EXISTS', // see note above
+                                ),
+                                array(
+                                        'key' => $this->KEY,
+                                ),
+                        );
+
+
+                        $query->set( 'meta_query', $meta_query );
+                        $query->set( 'orderby', 'meta_value' );
+                    }
+                } );
+
+                /**
+                 * Display the Showtime attribute on the posts listing.
+                 */
                 add_action( 'manage_post_posts_custom_column', function ( $column, $post_id ) {
                     if ( 'post' === get_post_type( $post_id ) && $this->get_category( $post_id, $this->SLUG ) ) {
                         if ( $column === $this->NAME ) {
@@ -229,6 +274,9 @@ namespace showtimes {
                     }
                 }, 10, 2 );
 
+                /**
+                 * Put a custom field into the Quick Edit panel.
+                 */
                 add_action( 'quick_edit_custom_box', function ( $column, $post_type ) {
                     if ( 'post' !== $post_type || $this->NAME !== $column ) {
                         return;
@@ -251,6 +299,9 @@ namespace showtimes {
                     <?php
                 }, 10, 2 );
 
+                /**
+                 * Save the metadata item.
+                 */
                 add_action( 'save_post_post', function ( $post_id, $post, $update ) {
                     $term = $this->get_category( $post_id, $this->SLUG );
                     if ( ! $term ) {
@@ -263,6 +314,9 @@ namespace showtimes {
                 }, 10, 3 );
             }
 
+            /**
+             * Augment the functionality of the Quick Edit panel.
+             */
             add_action( 'admin_footer-edit.php', function () {
                 global $typenow;
                 if ( 'post' !== $typenow ) {
@@ -392,8 +446,8 @@ namespace showtimes {
             if ( count( $prev ) > 1 ) {
                 delete_post_meta( $post_id, $meta_key );
             }
-            if ( ! is_string( $meta_value ) || 0 === strlen( $meta_value )) {
-                delete_post_meta ( $post_id, $meta_key );
+            if ( ! is_string( $meta_value ) || 0 === strlen( $meta_value ) ) {
+                delete_post_meta( $post_id, $meta_key );
             } else {
                 update_post_meta( $post_id, $meta_key, $meta_value );
             }
