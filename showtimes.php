@@ -24,7 +24,7 @@ namespace showtimes {
 
     class Showtime {
 
-        private $KEY = 'Showtime';
+        private $KEY = '_showtime';
         private $NAME = 'showtime';
         private $SLUG = 'show';
 
@@ -178,7 +178,8 @@ namespace showtimes {
 
             if ( is_admin() ) {
 
-                register_post_meta( 'post', $this->KEY, array(
+                register_post_meta(
+                        'post', $this->KEY, array(
                         'object_type'  => 'post',
                         'show_in_rest' => true,
                         'single'       => true,
@@ -186,6 +187,29 @@ namespace showtimes {
                         'label'        => __( 'Showtime', 'showtimes' ),
                         'description'  => __( 'The time and date of the event.', 'showtimes' ),
                 ) );
+                add_action( 'add_meta_boxes_post', function ( $post ) {
+                    $priority = ( $this->get_category( $post->ID, $this->SLUG ) ) ? 'high' : 'default';
+                    add_meta_box(
+                            $this->NAME,
+                            __( 'Showtime', 'showtimes' ),
+                            function ( $post, $callback_args ) {
+                                list( $display, $iso ) = $this->get_showtime( $post->ID, $this->KEY );
+
+                                ?>
+                                <input  type="datetime-local"
+                                        id="<?php echo esc_attr( $this->NAME ) ?>"
+                                        name="<?php echo esc_attr( $this->NAME ) ?>"
+                                        value="<?php echo esc_attr( $iso ) ?>"
+                                        title="<?php echo esc_attr__('The date and time of this post\'s event', 'showtimes') ?>"/>
+
+                                <?php
+                            },
+                            null,
+                            'normal',
+                            $priority
+                    );
+
+                }, 10, 1 );
 
                 add_filter( 'manage_post_posts_columns', function ( $columns ) {
                     $columns[ $this->NAME ] = __( 'Showtime', 'showtimes' );
@@ -231,21 +255,6 @@ namespace showtimes {
                     $term = $this->get_category( $post_id, $this->SLUG );
                     if ( ! $term ) {
                         return;
-                    }
-                    $time = false;
-                    if ( is_array( $_POST['meta'] ) ) {
-                        foreach ( $_POST['meta'] as $meta_id => $item ) {
-                            if ( is_array( $item )
-                                 && array_key_exists( 'key', $item )
-                                 && array_key_exists( 'value', $item )
-                                 && $item['key'] === $this->KEY ) {
-                                $time = sanitize_text_field( $item['value'] );
-                                break;
-                            }
-                        }
-                    }
-                    if ( is_string( $time ) ) {
-                        $this->single_update( $post_id, $this->KEY, $time );
                     }
                     if ( isset( $_POST[ $this->NAME ] ) ) {
                         $this->single_update( $post_id, $this->KEY, sanitize_text_field( $_POST[ $this->NAME ] ) );
@@ -383,18 +392,23 @@ namespace showtimes {
             if ( count( $prev ) > 1 ) {
                 delete_post_meta( $post_id, $meta_key );
             }
-            update_post_meta( $post_id, $meta_key, $meta_value );
+            if ( ! is_string( $meta_value ) || 0 === strlen( $meta_value )) {
+                delete_post_meta ( $post_id, $meta_key );
+            } else {
+                update_post_meta( $post_id, $meta_key, $meta_value );
+            }
         }
 
         private function clean_format( $format, DateTimeImmutable $time ) {
-            $now = new DateTimeImmutable('now', wp_timezone());
-            if ('Y' !== substr($format, 0,1)) {
+            $now = new DateTimeImmutable( 'now', wp_timezone() );
+            if ( 'Y' !== substr( $format, 0, 1 ) ) {
                 $yearnow  = $now->format( 'Y' );
                 $yeartime = $time->format( 'Y' );
-                if ( $yearnow === $yeartime) {
-                    $format = preg_replace('/[- ,]+Y[- ,]/', ' ', $format);
+                if ( $yearnow === $yeartime ) {
+                    $format = preg_replace( '/[- ,]+Y[- ,]/', ' ', $format );
                 }
             }
+
             return $format;
 
         }
