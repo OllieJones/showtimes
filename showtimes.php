@@ -3,7 +3,8 @@
  * Plugin Name: Showtimes
  * Plugin URI: https://github.com/OllieJones/showtimes
  * Description: Display shows. Shows are posts with the category "show"
- * Version: 0.5.1
+ * Version: 0.5.2
+ * Stable tag: 0.5.2
  * Author: Oliver Jones
  * Author URI: https://github.com/OllieJones/
  * Requires at least: 5.8
