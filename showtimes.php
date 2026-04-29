@@ -23,6 +23,10 @@ namespace showtimes {
     use WP_Query;
     use WP_Term;
 
+    if ( ! defined( 'ABSPATH' ) ) {
+        exit;
+    }
+
     class Showtime {
 
         private $KEY = '_showtime';
@@ -111,8 +115,10 @@ namespace showtimes {
 
                 $args = array(
                         'category_name' => $this->SLUG,
+                    //phpcs:disable WordPress.DB.SlowDBQuery.slow_db_query_meta_key
                         'meta_key'      => $this->KEY,
                         'meta_type'     => 'DATETIME',
+                    //phpcs:disable WordPress.DB.SlowDBQuery.slow_db_query_meta_query
                         'orderby'       => 'meta_value',
                         'order'         => $order,
                 );
@@ -209,6 +215,11 @@ namespace showtimes {
                                        name="<?php echo esc_attr( $this->NAME ) ?>"
                                        value="<?php echo esc_attr( $iso ) ?>"
                                        title="<?php echo esc_attr__( 'The date and time of this post\'s event', 'showtimes' ) ?>"/>
+                                <input type="hidden"
+                                       id="<?php echo esc_attr( 'nonce-' . $this->NAME ) ?>"
+                                       name="<?php echo esc_attr( 'nonce-' . $this->NAME ) ?>"
+                                       value="<?php echo esc_attr( wp_create_nonce( $this->NAME ) ) ?>"/>
+
 
                                 <?php
                             },
@@ -286,13 +297,17 @@ namespace showtimes {
                     <fieldset class="inline-edit-col-right <?php echo esc_attr( $this->NAME ) ?>">
                         <div class="inline-edit-col">
                             <label>
-                                <span class="title"><?php _e( 'Showtime', 'showtimes' ); ?></span>
+                                <span class="title"><?php esc_html_e( 'Showtime', 'showtimes' ); ?></span>
                                 <span class="input-text-wrap">
 							<input
                                     type="datetime-local"
                                     id="<?php echo esc_attr( $this->NAME ) ?>"
                                     name="<?php echo esc_attr( $this->NAME ) ?>"
                                     value=""/>
+                            <input type="hidden"
+                                   id="<?php echo esc_attr( 'nonce-' . $this->NAME ) ?>"
+                                   name="<?php echo esc_attr( 'nonce-' . $this->NAME ) ?>"
+                                   value="<?php echo esc_attr( wp_create_nonce( $this->NAME ) ) ?>"/>
 						</span>
                             </label>
                         </div>
@@ -308,8 +323,11 @@ namespace showtimes {
                     if ( ! $term ) {
                         return;
                     }
-                    if ( isset( $_POST[ $this->NAME ] ) ) {
-                        $this->single_update( $post_id, $this->KEY, sanitize_text_field( $_POST[ $this->NAME ] ) );
+
+                    if ( isset( $_POST[ $this->NAME ] ) && isset ( $_POST[ 'nonce-' . $this->NAME ] ) ) {
+                        if ( 1 === wp_verify_nonce( sanitize_key( wp_unslash( $_POST[ 'nonce-' . $this->NAME ] ) ), $this->NAME ) ) {
+                            $this->single_update( $post_id, $this->KEY, sanitize_text_field( wp_unslash( $_POST[ $this->NAME ] ) ) );
+                        }
                     }
 
                 }, 10, 3 );
@@ -396,8 +414,8 @@ namespace showtimes {
 
             }
             if ( ! $showtime_iso ) {
-                /* Default ISO time. */
-                $showtime_iso = date( 'Y-m-d', strtotime( 'tomorrow' ) ) . 'T18:00:00';
+                /* Default ISO time, tomorrow at 6pm. */
+                $showtime_iso = $this->get_isoday( 'tomorrow' ) . 'T18:00:00';
                 $showtime     = ( 'title' === $context )
                         ? ''
                         : __( 'Use Quick Edit to set the showtime', 'showtimes' );
